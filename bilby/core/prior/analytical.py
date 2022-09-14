@@ -1517,3 +1517,147 @@ class Categorical(Prior):
             idxs = np.isin(val, self.categories)
             probs[idxs] = self.lnp
             return probs
+
+class HollowedGaussian(Prior):
+
+    def __init__(self, mu, alpha, beta, name=None, latex_label=None, unit=None, boundary=None):
+        """Hollowed Gaussian prior with mean mu and width alpha and hollowed width beta 
+
+        Parameters
+        ==========
+        mu: float
+            Mean of the Gaussian prior
+        alpha:
+            Width/Standard deviation of the Gaussian prior
+        beta:
+            Width of hollowed out portion of Gaussian prior
+        name: str
+            See superclass
+        latex_label: str
+            See superclass
+        unit: str
+            See superclass
+        boundary: str
+            See superclass
+        """
+        super(HollowedGaussian, self).__init__(name=name, latex_label=latex_label, unit=unit, boundary=boundary)
+        self.mu = mu
+        self.alpha=alpha
+        self.beta=beta
+
+    #def rescale(self, val):
+        """
+        'Rescale' a sample from the unit line element to the appropriate Gaussian prior.
+
+        Parameters
+        ==========
+        val: Union[float, int, array_like]
+
+        This maps to the inverse CDF. This has been analytically solved for this case.
+        """
+        #return self.mu + erfinv(2 * val - 1) * 2 ** 0.5 * self.alpha
+
+    def prob(self, val):
+        """Return the prior probability of val.
+
+        Parameters
+        ==========
+        val: Union[float, int, array_like]
+
+        Returns
+        =======
+        Union[float, array_like]: Prior probability of val
+        """
+        return 1/(np.sqrt(2*np.pi)*(self.alpha-self.beta))*(np.exp(-0.5*((val-self.mu)/self.alpha)**2)-np.exp(-0.5*((val-self.mu)/self.beta)**2))
+
+    def cdf(self, val):
+        return (self.alpha/(2*(self.alpha-self.beta)))*(1 + erf((val - self.mu) / 2 ** 0.5 / self.alpha))\
+            - (self.beta/(2*(self.alpha-self.beta)))*(1 + erf((val - self.mu) / 2 ** 0.5 / self.beta))
+
+
+class ProximityPrior(HollowedGaussian):
+    """Synonym for the Hollowed Gaussian Distribution"""
+
+
+class TruncatedHollowedGaussian(Prior):
+
+    def __init__(self, mu, alpha, beta, minimum, maximum, name=None,
+                 latex_label=None, unit=None, boundary=None):
+        """Truncated Hollow Gaussian prior with mean mu, width alpha and hollow width beta
+
+        Parameters
+        ==========
+        mu: float
+            Mean of the Gaussian prior
+        alpha:
+            Width/Standard deviation of the Gaussian prior
+        beta:
+            With of the hollowed out portion of the Gaussian
+        minimum: float
+            See superclass
+        maximum: float
+            See superclass
+        name: str
+            See superclass
+        latex_label: str
+            See superclass
+        unit: str
+            See superclass
+        boundary: str
+            See superclass
+        """
+        super(TruncatedHollowedGaussian, self).__init__(name=name, latex_label=latex_label, unit=unit,
+                                                minimum=minimum, maximum=maximum, boundary=boundary)
+        self.mu = mu
+        self.alpha = alpha 
+        self.beta = beta
+
+    @property
+    def normalisation(self):
+        """ Calculates the proper normalisation of the truncated hollowed Gaussian
+
+        Returns
+        =======
+        float: Proper normalisation of the truncated hollowed Gaussian
+        """
+        return ((self.alpha/(2*(self.alpha-self.beta)))*(1 + erf((self.maximum - self.mu) / 2 ** 0.5 / self.alpha)) \
+            - (self.beta/(2*(self.alpha-self.beta)))*(1 + erf((self.maximum - self.mu) / 2 ** 0.5 / self.beta)))\
+            - ((self.alpha/(2*(self.alpha-self.beta)))*(1 + erf((self.minimum - self.mu) / 2 ** 0.5 / self.alpha)) \
+            - (self.beta/(2*(self.alpha-self.beta)))*(1 + erf((self.minimum - self.mu) / 2 ** 0.5 / self.beta)))\
+
+
+    #def rescale(self, val):
+        """
+        'Rescale' a sample from the unit line element to the appropriate truncated Gaussian prior.
+
+        This maps to the inverse CDF. This has been analytically solved for this case.
+        """
+        #return erfinv(2 * val * self.normalisation + erf(
+        #    (self.minimum - self.mu) / 2 ** 0.5 / self.sigma)) * 2 ** 0.5 * self.sigma + self.mu
+
+    def prob(self, val):
+        """Return the prior probability of val.
+
+        Parameters
+        ==========
+        val: Union[float, int, array_like]
+
+        Returns
+        =======
+        float: Prior probability of val
+        """
+        return  (1/(np.sqrt(2*np.pi)*(self.alpha-self.beta))*(np.exp(-0.5*((val-self.mu)/self.alpha)**2)-np.exp(-0.5*((val-self.mu)/self.beta)**2)))\
+             / self.normalisation * self.is_in_prior_range(val)
+
+    def cdf(self, val):
+        val = np.atleast_1d(val)
+        _cdf = (((self.alpha/(2*(self.alpha-self.beta)))*(1 + erf((val - self.mu) / 2 ** 0.5 / self.alpha))\
+            - (self.beta/(2*(self.alpha-self.beta)))*(1 + erf((val - self.mu) / 2 ** 0.5 / self.beta)))\
+                -((self.alpha/(2*(self.alpha-self.beta)))*(1 + erf((self.minimum - self.mu) / 2 ** 0.5 / self.alpha))\
+            - (self.beta/(2*(self.alpha-self.beta)))*(1 + erf((self.minimum - self.mu) / 2 ** 0.5 / self.beta))))/self.normalisation
+        _cdf[val > self.maximum] = 1
+        _cdf[val < self.minimum] = 0
+        return _cdf
+
+class TruncatedProximityPrior(TruncatedHollowedGaussian):
+    """Synonym for the Truncated Hollowed Gaussian Distribution"""
